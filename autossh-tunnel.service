@@ -1,0 +1,37 @@
+[Unit]
+Description=AutoSSH bastion tunnel service
+Wants=network-online.target
+After=network-online.target ssh.service
+
+[Service]
+User=root
+Type=simple
+
+Environment="AUTOSSH_GATETIME=0"
+Environment="AUTOSSH_POLL=20"
+Environment="SSH_AUTH_SOCK=/run/ssh-agent.socket"
+
+ExecStartPre=-killall ssh-agent gpg-agent pcscd
+ExecStartPre=/usr/bin/ssh-agent -a /run/ssh-agent.socket
+ExecStartPre=/bin/sh -c "/bin/echo -e \"123456\\n\" | DISPLAY=:0 SSH_ASKPASS=tee ssh-add -s /usr/lib/x86_64-linux-gnu/opensc-pkcs11.so"
+ExecStartPre=/bin/sh -c "/usr/bin/ssh-add -L > /etc/security/ssh_client_pubkey.pub"
+
+ExecStart=/usr/bin/autossh \
+	-o "ServerAliveInterval 30" \
+	-o "ServerAliveCountMax 3" \
+	-o "ExitOnForwardFailure=yes" \
+	-o "ConnectTimeout=10" \
+	-o "IdentitiesOnly=yes" \
+	-o "StrictHostKeyChecking=no" \
+	-o "UserKnownHostsFile=/dev/null" \
+	-i /etc/security/ssh_client_pubkey.pub \
+	-NR {{ ssh_connect_port }}:localhost:22 \
+	{{ tunnel_username }}@{{ ssh_bastion_host }} -p 22
+
+ExecStop=-killall ssh-agent
+
+Restart=always
+RestartSec=60s
+
+[Install]
+WantedBy=multi-user.target
